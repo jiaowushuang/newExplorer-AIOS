@@ -30,4 +30,7 @@ Memory is the same, decomposition process: NUMA node -> UMA node -> Region -> Fr
 # issue
 
 # your ideas
-
+1. 当前使用C语言编写'Nested + Combined' Model样例
+2. 后续改用Rust优化'Nested + Combined' Model样例
+3. 当前使用假设环境（CPU，内存，通信，同步等）进行模拟运行
+4. 后续移植到Qemu/评估板硬件上进行验证

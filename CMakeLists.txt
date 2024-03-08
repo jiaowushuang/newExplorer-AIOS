@@ -1,7 +1,5 @@
-# The MiniCppStarter
+# The newExplorer-AIOS
 #
-# Build and run by calling: 
-# cmake -S. -Bbuild && cmake --build build && ./build/Playground
 
 cmake_minimum_required(VERSION 3.14 FATAL_ERROR)
 
@@ -23,7 +21,7 @@ project(Playground LANGUAGES C)
 # See https://github.com/TheLartians/CPM.cmake for details and examples
 
 # the ModernCppStarter defines an example project called 'Greeter'
-#CPMAddPackage("gh:TheLartians/ModernCppStarter@0.17.2")
+# CPMAddPackage("gh:TheLartians/ModernCppStarter@0.17.2")
 
 # ---- Create executable ----
 SET(CMAKE_BUILD_TYPE "Debug")

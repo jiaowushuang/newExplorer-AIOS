@@ -1,27 +1,27 @@
-#include "tensor.h"
+#include "tensor_ops.h"
 
 void *kmalloc(size_t size)
 {
-	void *vaddr;
+	void *range_transform;
 	status_t ret;
 
 	if (!size)
 		return NULL;
 
 
-	paddr_t paddr = 0;
-	struct node_struct *pn = get_recent_pn();
+	range_base_t range_base = 0;
+	struct node_struct *pnode = get_recent_pnode();
 	int gfp_flags = FUNC_OBJECT;
 
-	ret = pn->vtbl->alloc(pn, &paddr, size_to_grains(size),
+	ret = pnode->vtbl->alloc(pnode, &range_base, size_to_item(size),
 				gfp_flags);
 	if (ret) {
-		dump_grains(ret);
+		dump_item(ret);
 		return NULL;
 	}
 
-	vaddr = (void *)paddr_to_kvaddr(paddr);
-	return vaddr;
+	range_transform = (void *)range_base_transform(range_base);
+	return range_transform;
 }
 
 int kfree(void *object)
@@ -31,23 +31,23 @@ int kfree(void *object)
 	if (!object)
 		return ERR_INVALID_ARGS;
 
-	struct node_struct *pn = get_recent_pn();
-	struct grain_struct *page = virt_to_page(object);
+	struct node_struct *pnode = get_recent_pnode();
+	struct item_struct *page = range_transform_to_item(object);
 
-	paddr_t paddr = page_to_paddr(page);
+	range_base_t range_base = item_to_range(page);
 
-	ret = pn->vtbl->free(paddr);
+	ret = pnode->vtbl->free(range_base);
 	if (ret)
-		dump_grains(ret);
+		dump_item(ret);
 
 	return ret;
 }
 
-void dump_grains(status_t ret)
+void dump_item(status_t ret)
 {
-	struct node_struct *pn = get_recent_pn();
+	struct node_struct *pnode = get_recent_pnode();
 
 	printf("pma page-caller retv is %d\n", ret);
-	pn->vtbl->dump_node(pn);
+	pnode->vtbl->dump_node(pnode);
 }
 

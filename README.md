@@ -38,6 +38,15 @@ AIOS, a machine learning algorithm-driven device resource manager, is built for 
 
 内存也是如此，分解过程：NUMA节点 -> UMA节点 -> 区域 -> 空闲链表 -> 页 -> 对象，组合过程：事务 = 某几个内存对象 ++ 某些页 ++ 某几个区域 ++ 某几个节点 ++ ...
 
+|对照/统一术语|时间|空间|...|
+|----|----|----|----|
+|集-set|CPU集群|NUMA节点|..|
+|节点-node|CPU|UMA节点|..|
+|组-group|进程组|区域|..|
+|单元-cell|进程|空闲链表|..|
+|项-item|子进程|页|..|
+|切片-slice|线程|对象|..|
+
 Nesting, that is, a resource can be decomposed layer by layer, or can be encapsulated layer by layer; Composition, that is, some resources can be combined with arbitrary input requests. The model performs well in the abstraction of resources such as scheduling time and memory address space.
 For example, -> As a decomposition symbol, then you can abstract the scheduling time of the system as: CPU cluster -> SMP/AMP CPU -> Process group time unit -> Process time unit -> thread time unit -> child process time unit -> child thread time unit.
 ++ as a combination symbol, then the scheduling time of a transaction can be abstracted as: transaction = several sub-process time units ++ several process time units ++ several CPU time units ++...
@@ -71,12 +80,14 @@ LLM可以分析用户A语言，从知识库中获取相应的答案，并反馈�
 6. 资源驱动：底层OS管理最基本的物理硬件
 
 # install
+
+'Nested + Combined' Model for C:
 ```
 cmake -S. -Bbuild && cmake --build build && ./build/Playground
 ```
 
 # issue
-
+1. 是否该模型过于理想化了？需要待实验验证
 
 
 # your ideas

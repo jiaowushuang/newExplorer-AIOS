@@ -14,7 +14,7 @@
 
 
 #define containerof(ptr, type, member) \
-    ((type *)((addr_t)(ptr) - offsetof(type, member)))
+    ((type *)((range_t)(ptr) - offsetof(type, member)))
 
 struct list_node {
     struct list_node *prev;

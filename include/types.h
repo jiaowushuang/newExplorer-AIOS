@@ -11,66 +11,30 @@
 #include <stdint.h>
 #include <stddef.h>
 
-typedef unsigned char uchar;
-typedef unsigned short ushort;
-typedef unsigned int uint;
-typedef unsigned long ulong;
-typedef unsigned char u_char;
-typedef unsigned short u_short;
-typedef unsigned int u_int;
-typedef unsigned long u_long;
-
-typedef long long     off_t;
 
 typedef int status_t;
 
-typedef uintptr_t addr_t;
-typedef uintptr_t vaddr_t;
-typedef uintptr_t paddr_t;
+typedef uintptr_t range_t;
+typedef uintptr_t range_transform_t;
+typedef uintptr_t range_base_t;
 typedef uintptr_t word_t;
 
-typedef struct virq {
-#ifndef IS_64BIT    
-	uint32_t words[1];
-#endif    
-} virq_t;
+typedef int spin_lock_saved_state_t;
+typedef int spin_lock_t;
 
 #define POINTER_TO_UINT(x) ((uintptr_t)(x))
 #define UINT_TO_POINTER(x) ((void *)(uintptr_t)(x))
 #define POINTER_TO_INT(x) ((intptr_t)(x))
 #define INT_TO_POINTER(x) ((void *)(intptr_t)(x))
 
-typedef int kobj_id;
-
-typedef uint32_t sys_time_t;
-typedef unsigned long long sys_bigtime_t;
-#define INFINITE_TIME UINT32_MAX
-
-#define TIME_GTE(a, b) ((int32_t)((a) - (b)) >= 0)
-#define TIME_LTE(a, b) ((int32_t)((a) - (b)) <= 0)
-#define TIME_GT(a, b) ((int32_t)((a) - (b)) > 0)
-#define TIME_LT(a, b) ((int32_t)((a) - (b)) < 0)
-
-enum handler_return {
-    INT_NO_RESCHEDULE = 0,
-    INT_RESCHEDULE,
-};
-
 typedef signed long int ssize_t;
 
+static inline long fls(size_t x)
+{
+	return x ? sizeof(x) * 8 - builtin_clz_sizet(x) : 0;
+}
 
-typedef uint8_t u8;
-typedef uint16_t u16;
-typedef uint32_t u32;
-typedef uint64_t u64;
-
-typedef int8_t s8;
-typedef int16_t s16;
-typedef int32_t s32;
-typedef int64_t s64;
-
-typedef uint8_t u_int8_t;
-typedef uint16_t u_int16_t;
-typedef uint32_t u_int32_t;
-typedef uint64_t u_int64_t;
-
+#define ROUND_UP(x, n) (((x) + (n)-(1UL)) & ~((n)-(1UL)))
+#define ROUND_DOWN(x, n) ((x) & ~((n)-(1UL)))
+#define MAX(a, b) (((a) > (b)) ? (a) : (b))
+#define MIN(a, b) (((a) < (b)) ? (a) : (b))

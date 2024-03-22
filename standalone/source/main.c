@@ -6,7 +6,7 @@ extern void mm_init(void);
 extern void *kmalloc(size_t size);
 extern int kfree(void *object);
 
-#define PM_LX_X_TEST(page_shift, level) ((4 - (level)) * ((page_shift)-3) + 3 - (page_shift))
+#define PM_LX_X_TEST(item_shift, level) ((4 - (level)) * ((item_shift)-3) + 3 - (item_shift))
 
 int main(int arg, char **args)
 {

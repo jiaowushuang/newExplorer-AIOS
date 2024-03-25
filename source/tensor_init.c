@@ -1,7 +1,10 @@
 #include "tensor_struct.h"
 #include "tensor_ops.h"
 
-extern void *built_linear_space(size_t len);
+void *__init_linear_space(size_t len)
+{
+	return NULL;
+}
 
 static void __init_free_group_list(struct group_struct *group)
 {
@@ -44,7 +47,7 @@ void __init_pa_pernode(struct node_struct *self)
 	int pn_item = BIT(pn_size_shift - GROUP_ORDER_NUM);
 	size_t item_size = sizeof(struct item_struct) * pn_item;
 
-	item_ptr = built_linear_space(item_size);
+	item_ptr = __init_linear_space(item_size);
 
 	int pid = self->pnode_id;
 
@@ -236,9 +239,9 @@ void __init_pnode_pa(struct node_struct *self, bool payload)
 			break;
 	}
 
-	printf("rel nitems is %d-%d, g_lvl-g_order is %d-%d\n",
+	printf("rel nitems is %d-%ld, g_lvl-g_order is %d-%d\n",
 		      rel_pa_offset, self->attr.nr_freeitems, g_group_lvl[pid],
-		      g_group_struct[pid]);
+		      g_group_order[pid]);
 
 }
 
@@ -260,6 +263,13 @@ void mm_init(void)
 		_init_pnode(pnode);
 	}
 
+}
+
+// __init
+status_t init_pnode(struct node_struct *self)
+{
+	_init_pnode(self);
+	return NO_ERROR;
 }
 
 int get_recent_node_num(void)

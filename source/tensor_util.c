@@ -1,5 +1,6 @@
 #include "tensor_ops.h"
 
+extern void dump_item(status_t ret);
 void *kmalloc(size_t size)
 {
 	void *range_transform;

@@ -31,7 +31,7 @@ typedef signed long int ssize_t;
 
 static inline long fls(size_t x)
 {
-	return x ? sizeof(x) * 8 - builtin_clz_sizet(x) : 0;
+	return x ? sizeof(x) * 8 - __builtin_clzl(x) : 0;
 }
 
 #define ROUND_UP(x, n) (((x) + (n)-(1UL)) & ~((n)-(1UL)))

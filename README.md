@@ -83,7 +83,10 @@ LLM可以分析用户A语言，从知识库中获取相应的答案，并反馈�
 
 'Nested + Combined' Model for C:
 ```
-cmake -S. -Bbuild && cmake --build build && ./build/Playground
+cmake -S. -Bbuild && cmake --build build
+
+./build/Playground_Bin
+
 ```
 
 # issue

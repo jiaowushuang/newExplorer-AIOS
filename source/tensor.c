@@ -140,7 +140,7 @@ struct item_struct *remove_group_migration(struct group_struct *group, int lvl,
 	}
 
 bad_align: // means the current lvl is not prepared
-	printf("item %d order %d bad align by level %d of migration_type %d of nitems %d!\n",
+	printf("item %ld order %d bad align by level %d of migration_type %d of nitems %ld!\n",
 		item_idx, order, lvl, migration_type,
 		node_budget(migration_type));
 
@@ -297,7 +297,7 @@ struct item_struct *free_group_migration(struct item_struct *item,
 			// clear_item_state(item);
 
 			if (migration_type == MIGRATION_PCPTYPE ||
-			    (lvl == g_group_lvl && order == max_order - 1))
+			    (lvl == g_group_lvl[get_recent_node_num()] && order == max_order - 1))
 				goto free_item_migration_direct;
 
 			buddy_idx = next_buddy_idx(idx, abs_order);
@@ -430,7 +430,7 @@ word_t node_budget(int migration_type)
 {
 	word_t budget = 0;
 
-	for (int i = g_group_lvl; i < MAX_GROUP_LVLS; i++)
+	for (int i = g_group_lvl[get_recent_node_num()]; i < MAX_GROUP_LVLS; i++)
 		budget += node_budget_lvl(migration_type, i);
 
 	return budget;
@@ -452,7 +452,7 @@ static inline int forward_group_budget(int reverse_index, int migration_type,
 {
 	int order_index = order;
 
-	while (reverse_index >= g_group_lvl) {
+	while (reverse_index >= g_group_lvl[get_recent_node_num()]) {
 		if (group_budget(get_group_lvl(reverse_index, get_recent_node_num()),
 				reverse_index, migration_type, order_index,
 				MAX_ITEM_ORDER)) {
@@ -492,7 +492,7 @@ struct item_struct *forward_remove_group_migration(int reverse_index,
 	struct item_struct *last_item = NULL;
 
 	last_index = forward_group_budget(reverse_index, migration_type, order);
-	if (last_index < g_group_lvl)
+	if (last_index < g_group_lvl[get_recent_node_num()])
 		goto bad_budget;
 	while (last_index != reverse_index) {
 		last_item = remove_group_migration(
@@ -811,12 +811,7 @@ status_t decompose_group(struct item_struct *item_pptr)
 	return ret;
 }
 
-// __init
-status_t init_pnode(struct node_struct *self)
-{
-	_init_pnode(self);
-	return NO_ERROR;
-}
+
 
 status_t migrate_group(struct node_struct *const self, struct item_struct **item_pptr,
 		     int order, int lvl, int type, bool is_combined)
@@ -1030,6 +1025,7 @@ static status_t node_struct_dispatch(struct node_struct *const self,
 
 static status_t node_struct_init(struct node_struct *const self)
 {
+	extern status_t init_pnode(struct node_struct *self);
 	return init_pnode(self);
 }
 
@@ -1048,7 +1044,7 @@ ssize_t preprocess_node_struct_alloc(int flags, word_t nitems,
 	case FUNC_RESERVED: {
 		if (tmp_nitems == node_budget(migration_type))
 			break;
-		for (int i = g_group_lvl; i < MAX_GROUP_LVLS; i++)
+		for (int i = g_group_lvl[get_recent_node_num()]; i < MAX_GROUP_LVLS; i++)
 			if (tmp_nitems == node_budget_lvl(migration_type, i))
 				break;
 		item_to_orders(&tmp_nitems);
@@ -1102,7 +1098,7 @@ static status_t node_struct_alloc(struct node_struct *pnode, range_base_t *range
 	psize = preprocess_node_struct_alloc(flags, nitems, migration_type);
 	if (psize <= 0) {
 		spin_unlock_irqrestore(&pnode->node_struct_lock, sflags);
-		printf("args parse is error, nitems is %d, flags is %d, migration_type is %d, is_combined is %d\n",
+		printf("args parse is error, nitems is %ld, flags is %d, migration_type is %d, is_combined is %d\n",
 		       psize, flags, migration_type, is_combined);
 		return ERR_INVALID_ARGS;
 	}
@@ -1111,7 +1107,7 @@ static status_t node_struct_alloc(struct node_struct *pnode, range_base_t *range
 
 	if (!suff) {
 		spin_unlock_irqrestore(&pnode->node_struct_lock, sflags);
-		printf("budge is zero, nitems args is %d\n", psize);
+		printf("budge is zero, nitems args is %ld\n", psize);
 		return ERR_NO_MEMORY;
 	}
 
@@ -1156,7 +1152,7 @@ void node_struct_dump_pcp(struct node_struct *const self)
 	node_list = &self->pcp;
 	for (int cid = 0; cid < PNODE_NUM; cid++) {
 		if (node_list->free_count[cid])
-			printf("[pcplist, pcpcount]: %p, %d\n",
+			printf("[pcplist, pcpcount]: %p, %ld\n",
 				  &node_list->free_cell[cid],
 				  node_list->free_count[cid]);
 	}
@@ -1166,7 +1162,7 @@ void pnode_node_struct_dump_group(int nid)
 {
 	struct group_struct *group;
 
-	for (int lvl = g_group_lvl; lvl < GROUP_LVL_NUM; lvl++) {
+	for (int lvl = g_group_lvl[get_recent_node_num()]; lvl < GROUP_LVL_NUM; lvl++) {
 
 		group = &g_group_struct[nid][lvl];
 
@@ -1184,7 +1180,7 @@ static status_t node_struct_dump_node(struct node_struct *const self)
 	int nid = self->pnode_id;
 
 	printf(
-		"[nid %d, addr 0x%lx, end 0x%lx, status %d, nr_freeitems 0x%lx]\n",
+		"[nid %d, addr 0x%lx, end 0x%lx, status %ld, nr_freeitems 0x%lx]\n",
 		nid, self->attr.addr, self->attr.size, self->attr.status,
 		self->attr.nr_freeitems);
 	node_struct_dump_pcp(self);

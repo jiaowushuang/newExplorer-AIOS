@@ -33,19 +33,23 @@ AIOS, a machine learning algorithm-driven device resource manager, is built for 
 
 # 'Nested + Combined' Model
 嵌套，即可以将某个资源一层层分解下去，亦可以一层层封装上去；组合，即可以将某些资源以任意的输入请求进行组合。该模型在调度时间和内存地址空间等资源的抽象上表现良好。
-例如，->作为分解符号，那么可以将系统的调度时间抽象为：CPU集群 -> SMP/AMP CPU -> 进程组时间元 -> 进程时间元 -> 线程时间元 -> 子进程时间元 -> 子线程时间元等。
-++ 作为组合符号，那么可以将某一事务的调度时间抽象为：事务 = 某几个子进程时间元 ++ 某几个进程时间元 ++ 某几个CPU时间元 ++ ...
+例如，->作为分解符号，那么可以将系统的调度时间抽象为：CPU集群 -> SMP/AMP CPU -> 1时间元 -> 2时间元 -> 3时间元 -> 4时间元 -> 5时间元等。
+++ 作为组合符号，那么可以将某一事务的调度时间抽象为：事务 = 某几个1时间元 ++ 某几个2时间元 ++ 某几个CPU时间元 ++ ...
 
 内存也是如此，分解过程：NUMA节点 -> UMA节点 -> 区域 -> 空闲链表 -> 页 -> 对象，组合过程：事务 = 某几个内存对象 ++ 某些页 ++ 某几个区域 ++ 某几个节点 ++ ...
 
 |对照/统一术语|时间|空间|...|
 |----|----|----|----|
 |集-set|CPU集群|NUMA节点|..|
-|节点-node|CPU|UMA节点|..|
-|组-group|进程组|区域|..|
-|单元-cell|进程|空闲链表|..|
-|项-item|子进程|页|..|
-|切片-slice|线程|对象|..|
+|节点-node|CPU/VCPU(Hypervisor/Supervisor)vcpu_struct|UMA节点/VUMA     mm_struct|..|
+|组-group|1st|区域|..|
+|单元-cell|2st|空闲链表|..|
+|项-item|3st|页/vma|..其他item细粒度|
+|切片-slice|4st|对象|..|
+
+执行实体：进程组->进程->子进程->线程
+每一个执行实体可拥有无限的虚拟资源。
+每一个执行实体需要变换到有限的物理资源。
 
 Nesting, that is, a resource can be decomposed layer by layer, or can be encapsulated layer by layer; Composition, that is, some resources can be combined with arbitrary input requests. The model performs well in the abstraction of resources such as scheduling time and memory address space.
 For example, -> As a decomposition symbol, then you can abstract the scheduling time of the system as: CPU cluster -> SMP/AMP CPU -> Process group time unit -> Process time unit -> thread time unit -> child process time unit -> child thread time unit.
@@ -54,13 +58,13 @@ For example, -> As a decomposition symbol, then you can abstract the scheduling 
 Memory is the same, decomposition process: NUMA node -> UMA node -> Region -> Free linked list -> page -> object, combination process: transaction = some memory objects ++ some pages ++ some areas ++ some nodes ++...
 
 调度时间和内存二者之间的区别在于：
-|资源类型|时间|空间|
-|----|----|----|
-|模型向量类型|优先级(序列号)向量+尺寸向量|映射(寻址号)向量+尺寸向量|
-|资源申请策略|相对公平(轮询+FIFO),不公平(抢占)|绝对公平(FIFO)|
-|资源有限性|无限=>有限+周期|有限=>物理内存+置换内存|
-|资源持有策略|阶梯性(优先级单调)|长期性(除非置换/释放, 长期持有)|
-|资源操作|分配+释放|分配+释放|
+|资源类型|时间|空间|备注|
+|----|----|----|----|
+|模型向量类型|优先级向量+尺寸向量|<延迟>映射向量+尺寸向量|转换到另一套数据结构 - 统一序列号|
+|资源申请策略|相对公平(轮询+FIFO),不公平(优先级单调抢占):在到达时刻前不可享有|绝对公平(FIFO):内存地址立刻享有或是延迟分配|延时参数|
+|资源有限性|无限=>有限+周期|有限=>物理内存+热插拔内存+置换内存|流+窗口|
+|资源持有策略|阶梯性(任务创建和销毁或部分时间片手动销毁)|长期性(除非置换/释放, 长期持有)|根据不同约束，可以从持有到非持有，生命周期lcc|
+|资源操作|分配+释放+使用计数|分配+释放+使用计数|...|
 
 笛卡尔积：
 
@@ -79,6 +83,9 @@ LLM可以分析用户A语言，从知识库中获取相应的答案，并反馈�
 5. 资源模型：该模型作为资源的抽象，可以根据资源属性，将资源数量，资源边界，资源效率等物理概念转换为数学概念
 6. 资源驱动：底层OS管理最基本的物理硬件
 
+模式：LLM（训练） ----> NC model ----> LLM'（参数校准）
+联动：https://github.com/jiaowushuang/Newlk-OS中资源视图
+
 # install
 
 'Nested + Combined' Model for C:
@@ -91,6 +98,11 @@ cmake -S. -Bbuild && cmake --build build
 
 # issue
 1. 是否该模型过于理想化了？需要待实验验证
+2. 当前重点在于如何在原内存模型的基础上，实现时间模型
+假设为无限长的时间约束一个超周期，在超周期内是有限分配的，但是在初始分配时间后，
+何时使用该时间，是不确定的；不使用该时间后，是否回收该时间，回收的属性是什么；
+回收后需要再次分配吗？
+3. 所以，资源分配和使用的范式是会存在的吧？
 
 
 # your ideas

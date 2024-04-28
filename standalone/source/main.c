@@ -2,7 +2,7 @@
 #include <stddef.h>
 #include <stdio.h>
 
-extern void mm_init(void);
+extern void _init(void);
 extern void *kmalloc(size_t size);
 extern int kfree(void *object);
 
@@ -13,7 +13,7 @@ int main(int arg, char **args)
 	int shift;
 	size_t size = 0;
 
-	mm_init();
+	init_node();
 
 	for (int l = 1; l < 4; l++) {
 		shift = PM_LX_X_TEST(12, l);

@@ -29,8 +29,8 @@ static inline int item_state_to_migration(int state)
 		migration_type = MIGRATION_MOVABLE;
 		break;
 	case STATE_ITEM_SLUB_TYPES:
-	case STATE_ITEM_PCP_TYPES:
-		migration_type = MIGRATION_PCPTYPE;
+	case STATE_ITEM_LRU_CACHE_TYPES:
+		migration_type = MIGRATION_LRUTYPE;
 		break;
 	case STATE_ITEM_NOMOVABLE_TYPES:
 		migration_type = MIGRATION_UNMOVABLE;
@@ -38,6 +38,9 @@ static inline int item_state_to_migration(int state)
 	case STATE_ITEM_RECLAIM_TYPES:
 		migration_type = MIGRATION_RECLAIMABLE;
 		break;
+	case STATE_ITEM_SPARSE_TYPES:
+	case STATE_ITEM_SPARSE_STREAM:
+		migration_type = MIGRATION_SPARSE_MOVABLE;
 	default:
 		break;
 	}
@@ -46,17 +49,23 @@ static inline int item_state_to_migration(int state)
 }
 
 static inline void prepare_node_struct_alloc(word_t nitems, int flags,
-						int *magration_type,
-						bool *is_combined)
+						int *migration_type,
+						bool *is_combined, 
+						bool *is_virtual,
+						bool *is_stream,
+						bool *is_entry)
 {
+	*is_virtual = false;
+	*is_stream = false;
+	*is_entry = false;
 	/* The fixed item corresponding to the reserved item must be
 	 * used up during the boot period, and the fixed item
 	 * (debugging item) at runtime is allocated by the NORMAL item,
 	 * so its number is limited to UNMOV_MAX_ITEMS, and each allocation
 	 * must be aligned according to the order
 	 */
-	if (flags == FUNC_DEBUG) {
-		*magration_type = MIGRATION_UNMOVABLE;
+	if (flags == FUNC_PHYSICAL_DEBUG) {
+		*migration_type = MIGRATION_UNMOVABLE;
 		*is_combined = false;
 		return;
 	}
@@ -67,33 +76,57 @@ static inline void prepare_node_struct_alloc(word_t nitems, int flags,
 	 * 3. Partially take away, all of each block_index is taken away
 	 * Default: reserved memory itself is contiguous memory
 	 */
-	if (flags == FUNC_RESERVED) {
-		*magration_type = MIGRATION_UNMOVABLE;
+	if (flags == FUNC_PHYSICAL_RESERVED) {
+		*migration_type = MIGRATION_UNMOVABLE;
 		*is_combined = true;
 		return;
 	}
 
-	if (nitems == 1) {
-		*magration_type = MIGRATION_PCPTYPE;
+	if (nitems == 1 && flags != FUNC_PHYSICAL_STREAM &&
+		flags != FUNC_VIRTUAL &&
+		flags != FUNC_VIRTUAL_STREAM &&
+		flags != FUNC_ENTITY) {
+		*migration_type = MIGRATION_LRUTYPE;
 		*is_combined = false;
 		return;
 	}
 
 	switch (flags) {
-	case FUNC_SYSCALL_DCONT:
-		*magration_type = MIGRATION_MOVABLE;
+	case FUNC_PHYSICAL_DCONT:
+		*migration_type = MIGRATION_MOVABLE;
 		*is_combined = true;
 		break;
-	case FUNC_SYSCALL_CONT:
-	case FUNC_MMU:
-	case FUNC_OBJECT:
+	case FUNC_PHYSICAL_CONT:
+	case FUNC_PHYSICAL_MMU:
+	case FUNC_PHYSICAL_OBJECT:
 		/* For the case of cross-lvl,
 		 * the number of item needs to be aligned into one lvl
 		 */
-		*magration_type = MIGRATION_MOVABLE;
+		*migration_type = MIGRATION_MOVABLE;
 		*is_combined = false;
+		
 		break;
-	case FUNC_UNDEFINED:
+	case FUNC_PHYSICAL_STREAM:
+		*migration_type = MIGRATION_SPARSE_MOVABLE;
+		*is_combined = false;
+		*is_stream = true;
+		break;	
+	case FUNC_VIRTUAL:
+		*migration_type = MIGRATION_SPARSE_MOVABLE;
+		*is_combined = false;
+		*is_virtual = true;		
+		break;
+	case FUNC_VIRTUAL_STREAM:
+		*migration_type = MIGRATION_SPARSE_MOVABLE;
+		*is_combined = false;
+		*is_virtual = true;
+		*is_stream = true;	
+		break;
+	case FUNC_ENTITY:
+		*migration_type = MIGRATION_SPARSE_MOVABLE;
+		*is_combined = false;
+		*is_entry = true;
+	case FUNC_PHYSICAL_UNDEFINED:
 	default:
 		printf("NO defined flags");
 	}
@@ -104,6 +137,17 @@ static inline bool compound_item(struct item_struct *item)
 {
 	return item->compound_head;
 }
+
+static inline struct item_struct *next_compound_item(struct item_struct *item)
+{
+	return item->compound_node;
+}
+
+static inline struct item_struct *next_node_compound_item(struct item_struct *item)
+{
+	return item->compound_hnode;
+}
+
 
 static inline void set_item_section(struct item_struct *item, word_t table)
 {
@@ -181,6 +225,22 @@ static inline word_t get_item_func(struct item_struct *item)
 	return GR(item->flags, BASE_ITEM_FUNC, OFFSET_ITEM_FUNC);
 }
 
+static inline void set_item_freeidx(struct item_struct *item, word_t state)
+{
+	MR(item->flags, BASE_ITEM_FREEIDX, OFFSET_ITEM_FREEIDX, state);
+}
+
+static inline void clear_item_freeidx(struct item_struct *item)
+{
+	ZR(item->flags, BASE_ITEM_FREEIDX, OFFSET_ITEM_FREEIDX);
+}
+
+static inline word_t get_item_freeidx(struct item_struct *item)
+{
+	return GR(item->flags, BASE_ITEM_FREEIDX, OFFSET_ITEM_FREEIDX);
+}
+
+
 static inline void set_item_table_no(struct item_struct *item, word_t table)
 {
 	MR(item->flags, BASE_ITEM_TABLE, OFFSET_ITEM_TABLE, table);
@@ -211,18 +271,18 @@ static inline word_t get_item_node(struct item_struct *item)
 	return GR(item->flags, BASE_ITEM_NODE, OFFSET_ITEM_NODE);
 }
 
-static inline void set_item_in_state(struct item_struct *item, word_t val)
+static inline void set_item_dim(struct item_struct *item, word_t val)
 {
-	MR(item->flags, BASE_ITEM_IN_STATE, OFFSET_ITEM_IN_STATE, val);
+	MR(item->flags, BASE_ITEM_DIM, OFFSET_ITEM_DIM, val);
 }
-static inline void clear_item_in_state(struct item_struct *item, word_t val)
+static inline void clear_item_dim(struct item_struct *item, word_t val)
 {
-	CR(item->flags, BASE_ITEM_IN_STATE, OFFSET_ITEM_IN_STATE, val);
+	CR(item->flags, BASE_ITEM_DIM, OFFSET_ITEM_DIM, val);
 }
 
-static inline word_t get_item_in_state(struct item_struct *item)
+static inline word_t get_item_dim(struct item_struct *item)
 {
-	return GR(item->flags, BASE_ITEM_IN_STATE, OFFSET_ITEM_IN_STATE);
+	return GR(item->flags, BASE_ITEM_DIM, OFFSET_ITEM_DIM);
 }
 
 static inline word_t next_buddy_idx(long item_idx, word_t order)
@@ -236,7 +296,9 @@ static inline bool item_is_buddy(struct item_struct *buddy, word_t order)
 	bool is_buddy_present;
 	bool is_order_equal;
 
-	is_buddy_present = item_is_present(buddy);
+	is_buddy_present = item_is_present(buddy); 
+	// diff: SPARSE_TABLE(allocat) and SPARSE_BLOCK(free) is buddy,
+	// and canot buddy merge
 	is_order_equal = (order == get_item_order(buddy));
 
 	return !is_buddy_present && is_order_equal;
@@ -246,37 +308,32 @@ static inline bool item_is_buddy(struct item_struct *buddy, word_t order)
 
 static inline word_t range_to_idx(range_base_t range_base)
 {
-	return range_base >> GROUP_ORDER_NUM;
+	return range_base >> GROUP_ORDER_NUM_SHIFT;
 }
 
 static inline range_base_t idx_to_range(word_t idx)
 {
-	return idx << GROUP_ORDER_NUM;
+	return idx << GROUP_ORDER_NUM_SHIFT;
 }
 
-static inline int idx_to_lvl(long idx, int lvl_index)
+
+static inline int idx_to_lvl(long idx)
 {
-	int lvl = -1;
-	word_t block_shift, block_size, block_mask, lvl_idx;
+	word_t block_shift, block_size, block_mask, lvl_idx, lvl;
 
-	if (!idx) {
-		lvl = g_group_lvl[get_recent_node_num()];
-		goto zero_idx;
-	}
-
-	for (lvl = lvl_index; lvl >= 0; --lvl) {
-		block_shift = FUNCTION_ITEM_LVL(GROUP_ORDER_NUM, lvl);
-		block_size = BIT(block_shift + FUNCTION_ITEM(GROUP_ORDER_NUM));
+	for (lvl = 0; lvl < GROUP_LVL_NUM; ++lvl) {
+		block_shift = FUNCTION_ITEM_LVL(GROUP_ORDER_NUM_SHIFT, lvl);
+		block_size = BIT(block_shift);
 		block_mask = block_size - 1;
 		lvl_idx = idx >> block_shift;
-		idx &= !block_mask;
+		idx &= block_mask;
 		if (lvl_idx)
 			break;
 	}
 
-zero_idx:
 	return lvl;
 }
+
 
 static inline int nitems_to_lvl(word_t *nitems, bool align)
 {
@@ -286,62 +343,89 @@ static inline int nitems_to_lvl(word_t *nitems, bool align)
 	word_t lvl_nitem;
 
 	for (int level = 0; level < MAX_GROUP_LVLS; ++level) {
-		block_shift = FUNCTION_ITEM_LVL(GROUP_ORDER_NUM, level);
+		block_shift = FUNCTION_ITEM_LVL(GROUP_ORDER_NUM_SHIFT, level);
 		block_size = BIT(block_shift);
 		block_mask = block_size - 1;
 		lvl_nitem = (*nitems) >> block_shift;
 		if (!lvl_nitem)
 			continue;
 		if (align)
-			*nitems &= !block_mask;
+			*nitems &= ~block_mask;
 		return level;
 	}
 	return -1;
 }
 
 
-
-
 static inline struct node_struct *get_pnode_num(int nu)
 {
-	return &g_node_struct[nu];
+	return &phy_node_struct[nu];
 }
 
-static inline struct node_struct *get_recent_pnode(void)
+static inline struct node_struct *get_current_pnode(int dim_type)
 {
-	return get_pnode_num(get_recent_node_num());
+	return get_pnode_num(get_current_node_num(dim_type));
 }
 
 static inline int get_num_pnode(struct node_struct *pnode)
 {
-	return pnode - g_node_struct;
+	int idx = (pnode >=phy_node_struct) ? 
+		(pnode - phy_node_struct)   : -1;
+
+	return idx;
 }
 
+static inline struct node_struct *get_vnode_num(int nu)
+{
+	return PROCESS_GROUP_NODE_NU(nu);
+}
+
+static inline struct node_struct *get_recent_vnode(int dim_type)
+{
+	return get_vnode_num(get_current_vnode_num(dim_type));
+}
+
+static inline int get_num_vnode(struct node_struct *vnode)
+{
+	int idx = vnode - PROCESS_GROUP_NODE_NU(0);
+
+	return idx;
+}
 
 static inline struct group_struct *get_group_lvl(int lvl, int nu)
 {
-	return &g_group_struct[nu][lvl];
+	return &phy_group_struct[nu][lvl];
 }
 
 static inline int get_lvl_group(struct group_struct *group, int nu)
 {
-	return (group - &g_group_struct[0][0]) - nu * GROUP_LVL_NUM;
+	return (group - &phy_group_struct[0][0]) - nu * GROUP_LVL_NUM;
+}
+
+static inline struct group_struct *get_vgroup_lvl(int lvl, int nu)
+{
+	return PROCESS_GROUP_GROUP_NU(lvl, nu);
+}
+
+static inline int get_lvl_vgroup(struct group_struct *group, int nu)
+{
+	return group - PROCESS_GROUP_GROUP_NU(0, nu);
 }
 
 
-static inline long idx_to_rel_idx(long idx, int *pnode_id)
+static inline long idx_to_rel_idx(long idx, int *pnode_id, int dim)
 {
 	struct node_struct *pnode;
 	long rel_idx;
+	int dim_base = dim * NODE_LVL_NUM;
 
-
-	for (int i = 0; i < PNODE_NUM; i++) {
-		pnode = get_pnode_num(i);
-		if (idx >= range_to_idx(pnode->attr.addr) &&
-		    idx < range_to_idx(pnode->attr.addr + pnode->attr.size)) {
+	for (int i = 0; i < NODE_LVL_NUM; i++) {
+		pnode = get_pnode_num(i + dim_base);
+		if (idx >= range_to_idx(pnode->attr.offset) &&
+		    idx < range_to_idx(pnode->attr.offset + pnode->attr.size)) {
 			if (pnode_id)
-				*pnode_id = i;
-			rel_idx = idx - range_to_idx(pnode->attr.addr);
+				*pnode_id = i+dim_base;
+			rel_idx = idx - range_to_idx(pnode->attr.offset);
 			return rel_idx;
 		}
 	}
@@ -349,37 +433,103 @@ static inline long idx_to_rel_idx(long idx, int *pnode_id)
 	return -1;
 }
 
+static inline long idx_to_rel_idx_sparse(long idx, struct item_struct **item, 
+		int *node_id, int dim, int endlvl)
+{
+	struct item_struct *temp, *temp_root;
+	word_t block_shift, block_mask;
+	long idx_index, freeidx;
+
+	temp = PROCESS_GROUP_GROUP_ROOT(dim);
+	for (int level = 0; level < MAX_GROUP_LVLS; ++level) {
+		block_shift = FUNCTION_ITEM_LVL(GROUP_RANGE_NUM_SHIFT, level);
+		block_mask = BIT(block_shift)-1;
+		idx_index = idx >> block_shift;
+		idx &= block_mask;
+		
+		temp_root = (struct item_struct *)item_to_range_transform(temp);
+		if (!temp_root)
+			return ERR_FAULT;
+
+		temp = &temp_root[idx_index];
+
+		if (endlvl == level)
+			break;
+		
+		if (!temp->next)
+			return ERR_FAULT;
+		temp = temp->next;
+	}
+	if (item)
+		*item = temp;
+	if (node_id)
+		*node_id = get_item_node(temp);
+	return idx_index;
+}
+
 static inline long item_to_rel_idx(struct item_struct *item, int pnode_id)
 {
 	long rel_idx;
 
-	rel_idx = (long)(item - g_item_struct[pnode_id]);
+	rel_idx = (long)(item - phy_item_struct[pnode_id]);
+	
 	return rel_idx;
 }
 
+static inline long item_to_rel_idx_sparse(struct item_struct *item)
+{
+	long rel_idx;
+
+	rel_idx = (long)(item - item->prev->next); // item->prev: root, item->prev->next: item array start
+
+	return rel_idx;
+}
+
+
+// [only physical]
 static inline struct item_struct *rel_idx_to_item(long rel_idx, int pnode_id)
 {
-	return &g_item_struct[pnode_id][rel_idx];
+	return &phy_item_struct[pnode_id][rel_idx];
 }
+
 
 static inline long item_to_idx(struct item_struct *item)
 {
-	long idx;
-	int pnode_id = get_item_node(item);
+	long idx = 0;
+	int node_id = get_item_node(item);
 
-	if (pnode_id >= PNODE_NUM)
-		pnode_id = 0;
 
-	struct node_struct *pnode = get_pnode_num(pnode_id);
+	struct node_struct *pnode = get_pnode_num(node_id);
+	idx = item_to_rel_idx(item, node_id) + range_to_idx(pnode->attr.offset);
 
-	idx = item_to_rel_idx(item, pnode_id) + range_to_idx(pnode->attr.addr);
+
 	return idx;
 }
 
-static inline struct item_struct *idx_to_item(long idx)
+static inline long item_to_idx_sparse(struct item_struct *item)
+{
+	long idx = 0;
+	int dim = get_item_dim(item);
+	int lvl = get_item_section(item);
+	int block_shift = FUNCTION_ITEM_LVL(GROUP_RANGE_NUM_SHIFT, lvl);
+	
+	struct item_struct *root = PROCESS_GROUP_GROUP_ROOT(dim);
+	
+	while (item->prev) {
+		idx |= item_to_rel_idx_sparse(item) << block_shift;
+		block_shift += MAX_ITEM_RANGE+1; 
+		item = item->prev;
+	}
+	
+	idx |= (long)(root - item) << block_shift;
+	
+	return idx;
+}
+
+static inline struct item_struct *idx_to_item(long idx, int dim)
 {
 	int pnode_id;
-	long rel_idx = idx_to_rel_idx(idx, &pnode_id);
+	long rel_idx = idx_to_rel_idx(idx, &pnode_id, dim);
 
 	if (rel_idx < 0)
 		return NULL;
@@ -387,24 +537,56 @@ static inline struct item_struct *idx_to_item(long idx)
 	return item;
 }
 
+static inline struct item_struct *idx_to_item_sparse(long idx, int dim)
+{
+	struct item_struct *temp;
+	
+	idx_to_rel_idx_sparse(idx, &temp, NULL, dim, MAX_GROUP_LVLS-1);
+	return temp;
+
+}
+
 static inline range_base_t item_to_range(struct item_struct *item)
 {
 	return idx_to_range(item_to_idx(item));
 }
 
-static inline struct item_struct *range_to_item(range_base_t range_base)
+static inline range_base_t item_to_range_sparse(struct item_struct *item)
 {
-	return idx_to_item(range_to_idx(range_base));
+	return idx_to_range(item_to_idx_sparse(item));
 }
 
-static inline struct node_struct *idx_to_node(long idx)
+
+static inline struct item_struct *range_to_item(range_base_t range_base, int dim)
+{
+	return idx_to_item(range_to_idx(range_base), dim);
+}
+
+static inline struct item_struct *range_to_item_sparse(range_base_t range_base, int dim)
+{
+	return idx_to_item_sparse(range_to_idx(range_base), dim);
+}
+
+
+static inline struct node_struct *idx_to_pnode(long idx, int dim)
 {
 	int pnode_id;
-	long rel_idx = idx_to_rel_idx(idx, &pnode_id);
+	long rel_idx = idx_to_rel_idx(idx, &pnode_id, dim);
 
 	if (rel_idx < 0)
 		return NULL;
 	return get_pnode_num(pnode_id);
+}
+
+static inline struct node_struct *idx_to_vnode(long idx, int dim)
+{
+	int vnode_id;
+
+	long rel_idx = idx_to_rel_idx_sparse(idx, NULL, &vnode_id, dim, MAX_GROUP_LVLS-1);
+
+	if (rel_idx < 0)
+		return NULL;
+	return get_vnode_num(vnode_id);
 }
 
 static inline void *range_base_transform(range_base_t x)
@@ -419,23 +601,40 @@ static inline range_base_t range_transform_base(const void *x)
 
 static inline void *item_to_range_transform(struct item_struct *item)
 {
+	if (!item)
+		return NULL;
 	range_base_t range_base = item_to_range(item);
 	void *range_transform = (void *)range_base_transform(range_base);
 
 	return range_transform;
 }
 
-static inline struct item_struct *range_transform_to_item(const void *range_transform)
+static inline void *item_to_range_transform_sparse(struct item_struct *item)
+{
+	if (!item)
+		return NULL;
+
+	range_base_t range_base = item_to_range_sparse(item);
+	void *range_transform = (void *)range_base_transform(range_base);
+
+	return range_transform;
+}
+
+
+static inline struct item_struct *range_transform_to_item(const void *range_transform, int dim)
 {
 	range_base_t range_base = range_transform_base(range_transform);
-	struct item_struct *item = range_to_item(range_base);
+	struct item_struct *item = range_to_item(range_base, dim);
 	return item;
 }
 
-static inline bool idx_is_valid(long idx)
+static inline struct item_struct *range_transform_to_item_sparse(const void *range_transform, int dim)
 {
-	return idx >= 0 && idx < NODE_FIXED_RANGE_SIZE / FIXED_ITEM_SIZE;
+	range_base_t range_base = range_transform_base(range_transform);
+	struct item_struct *item = range_to_item_sparse(range_base, dim);
+	return item;
 }
+
 
 static inline word_t item_to_order(word_t *nr_items)
 {

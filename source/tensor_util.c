@@ -9,13 +9,12 @@ void *kmalloc(size_t size)
 	if (!size)
 		return NULL;
 
-
 	range_base_t range_base = 0;
-	struct node_struct *pnode = get_recent_pnode();
-	int gfp_flags = FUNC_OBJECT;
+	struct node_struct *node = get_current_pnode(DIM_MEMORY);
+	int gfp_flags = FUNC_PHYSICAL_OBJECT;
 
-	ret = pnode->vtbl->alloc(pnode, &range_base, size_to_item(size),
-				gfp_flags);
+	ret = node->vtbl->alloc(node, &range_base, size_to_item(size),
+				gfp_flags, NULL);
 	if (ret) {
 		dump_item(ret);
 		return NULL;
@@ -32,12 +31,12 @@ int kfree(void *object)
 	if (!object)
 		return ERR_INVALID_ARGS;
 
-	struct node_struct *pnode = get_recent_pnode();
-	struct item_struct *page = range_transform_to_item(object);
+	struct node_struct *node = get_current_pnode(DIM_MEMORY);
+	struct item_struct *page = range_transform_to_item(object, DIM_MEMORY);
 
 	range_base_t range_base = item_to_range(page);
 
-	ret = pnode->vtbl->free(range_base);
+	ret = node->vtbl->free(range_base, false, DIM_MEMORY);
 	if (ret)
 		dump_item(ret);
 
@@ -46,9 +45,18 @@ int kfree(void *object)
 
 void dump_item(status_t ret)
 {
-	struct node_struct *pnode = get_recent_pnode();
+	struct node_struct *node;
+
+	for (int i = 0; i < NODE_DIM_NUM; i++) {
+		node = get_current_pnode(i);
+		node->vtbl->dump_node(node, true);
+	}
 
 	printf("pma page-caller retv is %d\n", ret);
-	pnode->vtbl->dump_node(pnode);
+
+	for (int i = 0; i < NODE_DIM_NUM; i++) {
+		node = get_recent_vnode(i);
+		node->vtbl->dump_node(node, false);
+	}
 }
 
